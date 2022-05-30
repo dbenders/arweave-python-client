@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 TRANSACTION_DATA_LIMIT_IN_BYTES = 2000000
 API_URL = "https://arweave.net"
+NETWORK = None
 
 
 class ArweaveTransactionException(Exception):
@@ -47,6 +48,7 @@ class Wallet(object):
         self.address = owner_to_address(self.owner)
 
         self.api_url = API_URL
+        self.network = NETWORK
 
     def __init__(self, jwk_file='jwk_file.json'):
         with open(jwk_file, 'r') as j_file:
@@ -60,11 +62,21 @@ class Wallet(object):
         wallet._set_jwk_params()
         return wallet
 
+    @classmethod
+    def from_test(cls):
+        dirname = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(dirname, "testnet_jwk_file.json")) as f:
+            jwk_data = json.load(f)
+            return cls.from_data(jwk_data)
+
     @property
     def balance(self):
         url = "{}/wallet/{}/balance".format(self.api_url, self.address)
-
-        response = requests.get(url)
+        headers = {}
+        if self.network is not None:
+            headers["X-Network"] = self.network
+        
+        response = requests.get(url, headers=headers)
 
         if response.status_code == 200:
             balance = winston_to_ar(response.text)
@@ -83,8 +95,11 @@ class Wallet(object):
 
     def get_last_transaction_id(self):
         url = "{}/tx_anchor".format(self.api_url)
+        headers = {}
+        if self.network is not None:
+            headers["X-Network"] = self.network
 
-        response = requests.get(url)
+        response = requests.get(url, headers=headers)
 
         if response.status_code == 200:
             self.last_tx = response.text
@@ -106,7 +121,8 @@ class Transaction(object):
         self.tags = []
         self.format = kwargs.get('format', 2)
 
-        self.api_url = API_URL
+        self.api_url = wallet.api_url
+        self.network = wallet.network
         self.chunks = None
 
         data = kwargs.get('data', '')
@@ -164,13 +180,15 @@ class Transaction(object):
                 "Please supply a string containing json to initialize a serialized transaction")
 
     def get_reward(self, data_size, target_address=None):
-
+        headers = {}
+        if self.network is not None:
+            headers["X-Network"] = self.network
         url = "{}/price/{}".format(self.api_url, data_size)
 
         if target_address:
             url = "{}/price/{}/{}".format(self.api_url, data_size, target_address)
 
-        response = requests.get(url)
+        response = requests.get(url, headers=headers)
 
         if response.status_code == 200:
             reward = response.text
@@ -253,6 +271,8 @@ class Transaction(object):
         url = "{}/tx".format(self.api_url)
 
         headers = {'Content-Type': 'application/json', 'Accept': 'text/plain'}
+        if self.network is not None:
+            headers["X-Network"] = self.network
 
         json_data = self.json_data
         response = requests.post(url, data=json_data, headers=headers)
@@ -308,8 +328,11 @@ class Transaction(object):
 
     def get_status(self):
         url = "{}/tx/{}/status".format(self.api_url, self.id)
+        headers = {}
+        if self.network is not None:
+            headers["X-Network"] = self.network
 
-        response = requests.get(url)
+        response = requests.get(url, headers=headers)
 
         if response.status_code == 200:
             self.status = json.loads(response.text)
@@ -321,8 +344,9 @@ class Transaction(object):
 
     def get_transaction(self):
         url = "{}/tx/{}".format(self.api_url, self.id)
+        headers = {"X-Network": self.network}
 
-        response = requests.get(url)
+        response = requests.get(url, headers=headers)
 
         tx = None
 
@@ -335,8 +359,11 @@ class Transaction(object):
 
     def get_price(self):
         url = "{}/price/{}".format(self.api_url, self.data_size)
+        headers = {}
+        if self.network is not None:
+            headers["X-Network"] = self.network
 
-        response = requests.get(url)
+        response = requests.get(url, headers=headers)
 
         if response.status_code == 200:
             return winston_to_ar(response.text)
@@ -345,8 +372,11 @@ class Transaction(object):
 
     def get_data(self):
         url = "{}/{}/".format(self.api_url, self.id)
+        headers = {}
+        if self.network is not None:
+            headers["X-Network"] = self.network
 
-        response = requests.get(url)
+        response = requests.get(url, headers=headers)
 
         if response.status_code == 200:
             self.data = response.content
